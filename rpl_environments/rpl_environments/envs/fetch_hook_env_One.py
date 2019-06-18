@@ -4,7 +4,7 @@ import numpy as np
 import os
 import mujoco_py
 from gym import error
-from .hook_controller import get_hook_control, block_is_grasped, block_inside_grippers, grippers_are_closed, grippers_are_open, pick_at_position,get_move_action
+from .hook_controller_One import get_hook_control, block_is_grasped, block_inside_grippers, grippers_are_closed, grippers_are_open, pick_at_position,get_move_action
 
 import pdb
 
@@ -95,17 +95,18 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
             'robot0:slide0': 0.405,
             'robot0:slide1': 0.48,
             'robot0:slide2': 0.0,
-            'object0:joint': [1.85, 0.8, 0.4, 1., 0., 0., 0.],
-            'hook:joint': [1.35, 0.15, 0.4, 1., 0., 0., 0.],
+            'object0:joint': [1.8, 0.75, 0.4, 1., 0., 0., 0.],
+            'hook:joint': [1.35, 0.35, 0.4, 1., 0., 0., 0.],
         }
-        self.target_score=-1
-        if xml_file is None:
-            xml_file = os.path.join(DIR_PATH, 'assets', 'hookExpTwo.xml')
-        self.count=0
-        self._goal_pos = np.array([1.35, 0.55, 0.4])
-        self._object_xpos = np.array([1.65, 0.2])
-        
 
+        if xml_file is None:
+            xml_file = os.path.join(DIR_PATH, 'assets', 'hookExpOne.xml')
+
+        self._goal_pos = np.array([1.50, 1.1, 0.42])
+        self._object_xpos = np.array([1.8, 1.1])
+
+        #self._goal_pos = np.array([1.5, 0.8, 0.42])
+        #self._object_xpos = np.array([1.7, 1])
 
         fetch_env.FetchEnv.__init__(
             self, xml_file, has_object=True, block_gripper=False, n_substeps=20,
@@ -114,6 +115,8 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
             initial_qpos=initial_qpos, reward_type='sparse')
         
         utils.EzPickle.__init__(self)
+        
+
     def _get_obs(self):
         obs = fetch_env.FetchEnv._get_obs(self)
 
@@ -134,120 +137,8 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
         hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
 
         obs['observation'] = np.concatenate([obs['observation'], hook_observation])
-        
-        hook_pos = self.sim.data.get_site_xpos('hooktwo')
-        # rotations
-        hook_rot = rotations.mat2euler(self.sim.data.get_site_xmat('hooktwo'))
-        # velocities
-        hook_velp = self.sim.data.get_site_xvelp('hooktwo') * dt
-        hook_velr = self.sim.data.get_site_xvelr('hooktwo') * dt
-        # gripper state
-        hook_rel_pos = hook_pos - grip_pos
-        hook_velp -= grip_velp
-
-        hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
-
-        obs['observation'] = np.concatenate([obs['observation'], hook_observation])
 
         return obs
-
-    def get_move_action(self,observation, target_position, atol=0.021, gain=10, close_gripper=False, move=False):
-    # Get the currents
-        current_position = observation['observation'][:3]
-        print(self.target_score)
-        if move:
-            if self.target_score==-1:
-                target_position=[1.60, 0.15, 0.42]
-                self.count+=1
-            if self.target_score==-1 and self.count==60:
-                self.target_score=0
-            
-            if self.target_score==0:
-                target_position=[1.60, 0.27, 0.42]
-                gain=4
-                self.count=self.count+1
-                
-            if self.count==80 and self.target_score==0:
-                self.target_score=1
-                self.count=0
-                return np.array([0., 0., 0., 1.])
-        if self.target_score==1:
-            self.count+=1
-            if self.count==300:
-                self.target_score=2
-        if self.target_score==2:
-            target_position=[1.35,1.3,0.42]
-
-        
-        
-        
-        action = gain * np.subtract(target_position, current_position) 
-        if close_gripper:
-        	    gripper_action=-1
-        else:
-             gripper_action=0
-        action=np.hstack((action,gripper_action))
-        return action
-    
-    
-    
-    def get_hook_control(self,obs, atol=1e-2,second_hook=False):
-        """
-        Returns
-        -------
-        action : [float] * 4
-        """
-
-        gripper_position = obs['observation'][:3]
-        block_position = obs['observation'][3:6]
-        hook_position = obs['observation'][25:28]
-        hook_position2=obs['observation'][40:43]
-        place_position = obs['desired_goal']
-  
-
-        # Done
-        if abs(block_position[0] - place_position[0]) + abs(block_position[1] - place_position[1]) <= 1e-2:
-            if DEBUG:
-                print("DONE")
-            return np.array([0., 0., 0., -1.])
-
-        if second_hook: #CHANGED
-            hook_position=hook_position2
-
-            #hook_position2[0]=hook_position2[0]-0.15
-
-    
-        # Grasp and lift the hook
-        if not block_is_grasped(obs, gripper_position, hook_position, relative_grasp_position=(0, 0., -0.05), atol=atol):
-            if DEBUG:
-                print("Grasping and lifting the hook")
-            hook_target = hook_position.copy()
-            hook_target[2] = 0.5
-            print("POS",gripper_position)
-            #relative_grasp_position=(0,0.,-0.05)
-            #if second_hook:
-                #relative_grasp_position=(0,-0.04,-0.05)
-            return pick_at_position(obs, hook_position, hook_target, relative_grasp_position=(0, 0., -0.05)) #-0.05))
-    
-        # Align the hook to sweep
-        hook_target = np.array([block_position[0] - 0.5, block_position[1] - 0.05, block_position[2]])
-    
-        #if hook_position[0] >= hook_target[0] + 0.1 or hook_position[1] + 0.1 <= hook_target[1]:
-        if DEBUG:
-            print("Aligning to sweep")
-            #print(self.target_score)
-        if second_hook:
-            hook_target=[0.8,hook_position[1],0.42]
-        return self.get_move_action(obs, hook_target, close_gripper=True,move=True)
-    
-        if DEBUG:
-            print("Sweeping back")
-    
-        #direction = np.subtract(place_position, block_position)
-        #direction = direction[:2] / np.linalg.norm(direction[:2])
-    
-        #return np.array([0.4 * direction[0], 0.4 * direction[1], 0., -1.])
-
 
 
 
@@ -265,27 +156,6 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
 
         return super(FetchHookEnv, self).render(*args, **kwargs)
         
-    def _set_action(self, action):
-        assert action.shape == (4,)
-        action = action.copy()  # ensure that we don't change the action outside of this scope
-        pos_ctrl, gripper_ctrl = action[:3], action[3]
-
-        pos_ctrl *= 0.05  # limit maximum change in position
-        if self.set_quat:
-            #rot_ctrl=[0.866, 0.353, 0.353, 0]
-        	    rot_ctrl=[1, 0, 1., 0.] 
-        else:
-            rot_ctrl = [1, 0., 1, 0.]  # fixed rotation of the end effector, expressed as a quaternion
-        gripper_ctrl = np.array([gripper_ctrl, gripper_ctrl])
-        assert gripper_ctrl.shape == (2,)
-        if self.block_gripper:
-            gripper_ctrl = np.zeros_like(gripper_ctrl)
-        action = np.concatenate([pos_ctrl, rot_ctrl, gripper_ctrl])
-
-        # Apply action to simulation.
-        ctrl_(self.sim, action)
-        mocap_(self.sim, action)
-
     def _sample_goal(self):
         goal_pos = self._goal_pos.copy()
         goal_pos[:2] += self.np_random.uniform(-0.05, 0.05)
@@ -320,31 +190,6 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
         self.sim.forward()
         return True
 
-#    def _get_obs(self):
-#        obs = fetch_env.FetchEnv._get_obs(self)
-#
-#        grip_pos = self.sim.data.get_site_xpos('robot0:grip')
-#        dt = self.sim.nsubsteps * self.sim.model.opt.timestep
-#        grip_velp = self.sim.data.get_site_xvelp('robot0:grip') * dt
-#
-#        hook_pos = self.sim.data.get_site_xpos('hook')
-#        # rotations
-#        hook_rot = rotations.mat2euler(self.sim.data.get_site_xmat('hook'))
-#        # velocities
-#        hook_velp = self.sim.data.get_site_xvelp('hook') * dt
-#        hook_velr = self.sim.data.get_site_xvelr('hook') * dt
-#        # gripper state
-#        hook_rel_pos = hook_pos - grip_pos
-#        hook_velp -= grip_velp
-#
-#        hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
-#
-#        obs['observation'] = np.concatenate([obs['observation'], hook_observation])
-#      
-#        return obs
-
-    def _noisify_obs(self, obs, noise=1.):
-        return obs + np.random.normal(0, noise, size=obs.shape)
 
 
 class FetchHookEnvTwoEnv(FetchHookEnv):
@@ -554,19 +399,19 @@ class ResidualFetchHookEnv(FetchHookEnv):
     def step(self, residual_action):
         #action=get_move_action(self._last_observation,target_position=[1.55,1.35,0.42])
 
-        if self.target_score>0:
+        #if self.target_score>0:
             #print("1")
-            action=self.get_hook_control(self._last_observation,second_hook=True)
-        else:
+        action=get_hook_control(self._last_observation)
+        #else:
             #print("2")
-            action=self.get_hook_control(self._last_observation)
+        #action=get_hook_control(self._last_observation)
 
         #action=get_move_action(self._last_observation,target_position=[1.61170566 ,0.71510462, 0.43963282])
-        print("OBS",self._last_observation['observation'][3:6])
+        #print("OBS",self._last_observation['observation'][3:6])
         
         action = np.clip(action, -1, 1)
-        if bool:
-            self.set_quat=True
+        #if bool:
+            #self.set_quat=True
         observation, reward, done, debug_info = FetchHookEnv.step(self, action)
         
         self._last_observation = observation

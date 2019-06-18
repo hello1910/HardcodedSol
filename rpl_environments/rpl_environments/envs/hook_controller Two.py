@@ -116,20 +116,20 @@ def get_hook_control(obs, atol=1e-2):
     block_position = obs['observation'][3:6]
     hook_position = obs['observation'][40:43] #CHANGE!
     place_position = obs['desired_goal']
-    print("BLOCK", hook_position)
+
     # Done
     if abs(block_position[0] - place_position[0]) + abs(block_position[1] - place_position[1]) <= 1e-2:
         if DEBUG:
             print("DONE")
         return np.array([0., 0., 0., -1.]), False
     # Grasp and lift the hook
-    if not block_is_grasped(obs, gripper_position, hook_position, relative_grasp_position=(-0.0, 0., -0.05), atol=atol):
+    if not block_is_grasped(obs, gripper_position, hook_position, relative_grasp_position=(0., 0., -0.05), atol=atol):
         if DEBUG:
             print("Grasping and lifting the hook")
         hook_target = hook_position.copy()
         hook_target[2] = 0.5
         print("arrived")
-        return pick_at_position(obs, hook_position, hook_target, relative_grasp_position=(-0.03, 0., -0.05)), False
+        return pick_at_position(obs, hook_position, hook_target, relative_grasp_position=(0., 0., -0.05)), False
     # Align the hook to sweep
     hook_target = np.array([block_position[0] , block_position[1] , 0.45]) #CHANGED 0.5 -> 0.15   
     
@@ -142,7 +142,6 @@ def get_hook_control(obs, atol=1e-2):
 
     direction = np.subtract(place_position, block_position)
     direction = direction[:2]/ np.linalg.norm(direction[:2])
-    print("LAST")
     
     return np.array([ 0.4*direction[0],  0.4*direction[1], 0, -1.]) 
 

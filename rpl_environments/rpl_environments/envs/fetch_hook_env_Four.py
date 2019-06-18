@@ -4,7 +4,7 @@ import numpy as np
 import os
 import mujoco_py
 from gym import error
-from .hook_controller import get_hook_control, block_is_grasped, block_inside_grippers, grippers_are_closed, grippers_are_open, pick_at_position,get_move_action
+from .hook_controller import get_hook_control, block_is_grasped, block_inside_grippers, grippers_are_closed, grippers_are_open, pick_at_position
 
 import pdb
 
@@ -91,21 +91,24 @@ def mocap_(sim, action):
 
 class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
     def __init__(self, xml_file=None):
+        object_x=1.7
+        object_y=1
         initial_qpos = {
             'robot0:slide0': 0.405,
             'robot0:slide1': 0.48,
             'robot0:slide2': 0.0,
-            'object0:joint': [1.85, 0.8, 0.4, 1., 0., 0., 0.],
-            'hook:joint': [1.35, 0.15, 0.4, 1., 0., 0., 0.],
+            'object0:joint': [object_x,object_y, 0.4, 1., 0., 0., 0.],
+            'hook:joint': [1.35, 0.35, 0.4, 1., 0., 0., 0.],
         }
-        self.target_score=-1
-        if xml_file is None:
-            xml_file = os.path.join(DIR_PATH, 'assets', 'hookExpTwo.xml')
-        self.count=0
-        self._goal_pos = np.array([1.35, 0.55, 0.4])
-        self._object_xpos = np.array([1.65, 0.2])
-        
 
+        if xml_file is None:
+            xml_file = os.path.join(DIR_PATH, 'assets', 'hookExpFour.xml')
+
+        #self._goal_pos = np.array([1.4, 1, 0.42])
+        self._goal_pos=np.array([2.1,0.48, 0.42])
+        self.target_score=0
+        self.count=0
+        self._object_xpos = np.array([object_x,object_y])
 
         fetch_env.FetchEnv.__init__(
             self, xml_file, has_object=True, block_gripper=False, n_substeps=20,
@@ -114,73 +117,45 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
             initial_qpos=initial_qpos, reward_type='sparse')
         
         utils.EzPickle.__init__(self)
-    def _get_obs(self):
-        obs = fetch_env.FetchEnv._get_obs(self)
 
-        grip_pos = self.sim.data.get_site_xpos('robot0:grip')
-        dt = self.sim.nsubsteps * self.sim.model.opt.timestep
-        grip_velp = self.sim.data.get_site_xvelp('robot0:grip') * dt
-
-        hook_pos = self.sim.data.get_site_xpos('hook')
-        # rotations
-        hook_rot = rotations.mat2euler(self.sim.data.get_site_xmat('hook'))
-        # velocities
-        hook_velp = self.sim.data.get_site_xvelp('hook') * dt
-        hook_velr = self.sim.data.get_site_xvelr('hook') * dt
-        # gripper state
-        hook_rel_pos = hook_pos - grip_pos
-        hook_velp -= grip_velp
-
-        hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
-
-        obs['observation'] = np.concatenate([obs['observation'], hook_observation])
-        
-        hook_pos = self.sim.data.get_site_xpos('hooktwo')
-        # rotations
-        hook_rot = rotations.mat2euler(self.sim.data.get_site_xmat('hooktwo'))
-        # velocities
-        hook_velp = self.sim.data.get_site_xvelp('hooktwo') * dt
-        hook_velr = self.sim.data.get_site_xvelr('hooktwo') * dt
-        # gripper state
-        hook_rel_pos = hook_pos - grip_pos
-        hook_velp -= grip_velp
-
-        hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
-
-        obs['observation'] = np.concatenate([obs['observation'], hook_observation])
-
-        return obs
-
-    def get_move_action(self,observation, target_position, atol=0.021, gain=10, close_gripper=False, move=False):
+    def get_move_action(self,observation, target_position, atol=0.0012, gain=10, close_gripper=False, move=False):
     # Get the currents
         current_position = observation['observation'][:3]
-        print(self.target_score)
         if move:
-            if self.target_score==-1:
-                target_position=[1.60, 0.15, 0.42]
-                self.count+=1
-            if self.target_score==-1 and self.count==60:
-                self.target_score=0
-            
-            if self.target_score==0:
-                target_position=[1.60, 0.27, 0.42]
-                gain=4
+           #target_save=target_position object: 1.5, 1
+           target_position=[0.8,1,0.4] #first, lower number means back towards robot
+           #second, higher number means to the right, from your view
+            #print((current_position[0]-target_position[0])**2 + (current_position[1]-target_position[1])**2 + (current_position[2]-target_position[2])**2)
+           if (current_position[0]-target_position[0])**2 + (current_position[1]-target_position[1])**2 + (current_position[2]-target_position[2])**2 < atol:
+                if self.target_score==0:
+                    self.target_score=1
+           if self.target_score==1:
+                target_position= [1.6,1,0.4]
                 self.count=self.count+1
-                
-            if self.count==80 and self.target_score==0:
-                self.target_score=1
-                self.count=0
-                return np.array([0., 0., 0., 1.])
-        if self.target_score==1:
-            self.count+=1
-            if self.count==300:
-                self.target_score=2
-        if self.target_score==2:
-            target_position=[1.35,1.3,0.42]
+                gain=6.8
+                if (self.count==60):
+                    self.target_score=2
+                    self.count=0
+                if (current_position[0]-target_position[0])**2 + (current_position[1]-target_position[1])**2 + (current_position[2]-target_position[2])**2 < atol:
+                    #pass
+                    if self.target_score==1:
+                        self.target_score=2
+                        print("ARRIVED")
+           if self.target_score==2:
+                target_position=[2,1.2,0.42]
+                self.count+=1
+                if (self.count==50):
+                    self.target_score=3
+                    self.count=0
+           if self.target_score==3:
+               target_position=[1.4,1,0.42]
+               self.count=self.count+1
+               if (self.count==70):
+                   self.target_score=4
+           if self.target_score==4:
+               target_position=[1.4,0.7,0.42]
+               gain=5.5
 
-        
-        
-        
         action = gain * np.subtract(target_position, current_position) 
         if close_gripper:
         	    gripper_action=-1
@@ -191,7 +166,7 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
     
     
     
-    def get_hook_control(self,obs, atol=1e-2,second_hook=False):
+    def get_hook_control(self,obs, atol=1e-2):
         """
         Returns
         -------
@@ -201,44 +176,30 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
         gripper_position = obs['observation'][:3]
         block_position = obs['observation'][3:6]
         hook_position = obs['observation'][25:28]
-        hook_position2=obs['observation'][40:43]
         place_position = obs['desired_goal']
-  
-
+    
         # Done
         if abs(block_position[0] - place_position[0]) + abs(block_position[1] - place_position[1]) <= 1e-2:
             if DEBUG:
                 print("DONE")
             return np.array([0., 0., 0., -1.])
-
-        if second_hook: #CHANGED
-            hook_position=hook_position2
-
-            #hook_position2[0]=hook_position2[0]-0.15
-
     
         # Grasp and lift the hook
-        if not block_is_grasped(obs, gripper_position, hook_position, relative_grasp_position=(0, 0., -0.05), atol=atol):
+        if not block_is_grasped(obs, gripper_position, hook_position, relative_grasp_position=(0., 0., -0.05), atol=atol):
             if DEBUG:
                 print("Grasping and lifting the hook")
             hook_target = hook_position.copy()
             hook_target[2] = 0.5
-            print("POS",gripper_position)
-            #relative_grasp_position=(0,0.,-0.05)
-            #if second_hook:
-                #relative_grasp_position=(0,-0.04,-0.05)
-            return pick_at_position(obs, hook_position, hook_target, relative_grasp_position=(0, 0., -0.05)) #-0.05))
+            return pick_at_position(obs, hook_position, hook_target, relative_grasp_position=(0., 0., -0.05))
     
         # Align the hook to sweep
         hook_target = np.array([block_position[0] - 0.5, block_position[1] - 0.05, block_position[2]])
     
         #if hook_position[0] >= hook_target[0] + 0.1 or hook_position[1] + 0.1 <= hook_target[1]:
         if DEBUG:
-            print("Aligning to sweep")
-            #print(self.target_score)
-        if second_hook:
-            hook_target=[0.8,hook_position[1],0.42]
-        return self.get_move_action(obs, hook_target, close_gripper=True,move=True)
+            #print("Aligning to sweep", hook_position[0] + atol, hook_target[0], hook_position[1] + atol, hook_target[1])
+            print(self.target_score)
+            return self.get_move_action(obs, hook_target, close_gripper=True,move=True)
     
         if DEBUG:
             print("Sweeping back")
@@ -320,28 +281,28 @@ class FetchHookEnv(fetch_env.FetchEnv, utils.EzPickle):
         self.sim.forward()
         return True
 
-#    def _get_obs(self):
-#        obs = fetch_env.FetchEnv._get_obs(self)
-#
-#        grip_pos = self.sim.data.get_site_xpos('robot0:grip')
-#        dt = self.sim.nsubsteps * self.sim.model.opt.timestep
-#        grip_velp = self.sim.data.get_site_xvelp('robot0:grip') * dt
-#
-#        hook_pos = self.sim.data.get_site_xpos('hook')
-#        # rotations
-#        hook_rot = rotations.mat2euler(self.sim.data.get_site_xmat('hook'))
-#        # velocities
-#        hook_velp = self.sim.data.get_site_xvelp('hook') * dt
-#        hook_velr = self.sim.data.get_site_xvelr('hook') * dt
-#        # gripper state
-#        hook_rel_pos = hook_pos - grip_pos
-#        hook_velp -= grip_velp
-#
-#        hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
-#
-#        obs['observation'] = np.concatenate([obs['observation'], hook_observation])
-#      
-#        return obs
+    def _get_obs(self):
+        obs = fetch_env.FetchEnv._get_obs(self)
+
+        grip_pos = self.sim.data.get_site_xpos('robot0:grip')
+        dt = self.sim.nsubsteps * self.sim.model.opt.timestep
+        grip_velp = self.sim.data.get_site_xvelp('robot0:grip') * dt
+
+        hook_pos = self.sim.data.get_site_xpos('hook')
+        # rotations
+        hook_rot = rotations.mat2euler(self.sim.data.get_site_xmat('hook'))
+        # velocities
+        hook_velp = self.sim.data.get_site_xvelp('hook') * dt
+        hook_velr = self.sim.data.get_site_xvelr('hook') * dt
+        # gripper state
+        hook_rel_pos = hook_pos - grip_pos
+        hook_velp -= grip_velp
+
+        hook_observation = np.concatenate([hook_pos, hook_rot, hook_velp, hook_velr, hook_rel_pos])
+
+        obs['observation'] = np.concatenate([obs['observation'], hook_observation])
+      
+        return obs
 
     def _noisify_obs(self, obs, noise=1.):
         return obs + np.random.normal(0, noise, size=obs.shape)
@@ -437,7 +398,6 @@ class FetchHookEnvOneEnv(FetchHookEnv):
         
     def step(self, residual_action):
         #residual_action = 2. * residual_action
-
 
         #action = np.add(residual_action, get_hook_control(self._last_observation))
         action,bool=get_hook_control(self._last_observation)
@@ -552,17 +512,11 @@ class FetchHookEnvSixEnv(FetchHookEnv):
 class ResidualFetchHookEnv(FetchHookEnv):
 
     def step(self, residual_action):
-        #action=get_move_action(self._last_observation,target_position=[1.55,1.35,0.42])
+        #residual_action = 2. * residual_action
 
-        if self.target_score>0:
-            #print("1")
-            action=self.get_hook_control(self._last_observation,second_hook=True)
-        else:
-            #print("2")
-            action=self.get_hook_control(self._last_observation)
-
-        #action=get_move_action(self._last_observation,target_position=[1.61170566 ,0.71510462, 0.43963282])
-        print("OBS",self._last_observation['observation'][3:6])
+        #action = np.add(residual_action, get_hook_control(self._last_observation))
+        
+        action=self.get_hook_control(self._last_observation)
         
         action = np.clip(action, -1, 1)
         if bool:
