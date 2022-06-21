@@ -1,5 +1,5 @@
 -e git+https://github.com/openai/mujoco-py@a9f563cbb81d45f2379c6bcc4a4cd73fac09c4be#egg=mujoco_py
-numpy==1.14.5
+numpy==1.22.0
 gym==0.10.9
 matplotlib==3.0.0
 pandas==0.23.4
